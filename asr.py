@@ -125,3 +125,140 @@ class AudioCaptureThread(threading.Thread):
                 self._stream.close()
             except Exception as e:
                 print(f"Error closing audio stream: {e}")
+
+class ASRTranscriber(QThread):
+    """
+    Thread that consumes audio segments and performs speech-to-text using Faster-Whisper,
+    then translates the text to the target language using the provided Translator.
+    Emits the translated text via a Qt signal for display.
+    """
+    new_text = pyqtSignal(str)
+
+    def __init__(self, segment_queue: queue.Queue, translator, logger, initial_mode: str = "EN->AR", model_size: str = "small"):
+        """
+        Initialize the ASR transcriber thread.
+        :param segment_queue: Queue from which to read audio segments for transcription.
+        :param translator: Translator instance for performing translations.
+        :param logger: Logger instance for logging English text.
+        :param initial_mode: Initial translation mode ("EN->AR" or "AR->EN").
+        :param model_size: Size of the Whisper model to load (default "small").
+        """
+        super().__init__()
+        self.segment_queue = segment_queue
+        self.translator = translator
+        self.logger = logger
+        self.mode = initial_mode
+        self.model_size = model_size
+        self._model = None
+        # We will load the Whisper model in the run() to avoid blocking the main thread on initialization.
+
+    def run(self):
+        """Run the transcription and translation thread. Loads the ASR model and processes audio segments."""
+        # Load the Faster-Whisper model (on CPU)
+        try:
+            # Using int8 for compute_type to use less resources on CPU (faster inference)
+            self._model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+        except Exception as e:
+            print(f"Failed to load Whisper model (size={self.model_size}): {e}")
+            return
+        # Continuously process audio segments until interrupted
+        while not self.isInterruptionRequested():
+            try:
+                segment = self.segment_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if segment is None:
+                # Sentinel value to exit
+                break
+            # Perform speech recognition on the audio segment.
+            try:
+                # WhisperModel.transcribe can be called with a NumPy array of audio.
+                # We specify language to avoid mis-detection based on the known mode.
+                language = "en" if self.mode == "EN->AR" else "ar"
+                segments, info = self._model.transcribe(segment, language=language)
+                # Collect the transcribed text from the segments generator
+                transcribed_text = "".join([seg.text for seg in segments]).strip()
+            except Exception as e:
+                print(f"Transcription failed: {e}")
+                transcribed_text = ""
+            if not transcribed_text:
+                # If no transcription result (e.g., silence), continue to next segment
+                continue
+            # Determine translation direction based on mode and perform translation
+            if self.mode == "EN->AR":
+                # Source is English, translate to Arabic
+                translated_text = self.translator.translate_en_to_ar(transcribed_text)
+                english_text_to_log = transcribed_text  # source was English
+            else:
+                # Source is Arabic, translate to English
+                translated_text = self.translator.translate_ar_to_en(transcribed_text)
+                english_text_to_log = translated_text  # result is English
+            # Emit the translated text for GUI display
+            self.new_text.emit(translated_text if translated_text is not None else "")
+            # Log the English text (either original or translated)
+            if english_text_to_log:
+                self.logger.log(english_text_to_log)
+        # End of run loop
+        # Clean up if needed (for example, free the model to release memory)
+        self._model = None
+
+class ASR:
+    """
+    ASR manager class that ties together the audio capture and transcription threads.
+    Provides methods to start/stop the threads and to change translation mode.
+    """
+    def __init__(self, translator, logger, model_size: str = "small"):
+        """
+        Initialize the ASR system with given translator and logger.
+        :param translator: Translator instance for performing translations.
+        :param logger: Logger instance for logging English text.
+        :param model_size: Whisper model size to use for ASR (default "small").
+        """
+        self.segment_queue = queue.Queue(maxsize=5)
+        self.stop_event = threading.Event()
+        # Create the audio capture thread
+        self.capture_thread = AudioCaptureThread(self.segment_queue, self.stop_event)
+        # Create the ASR transcriber thread (QThread)
+        self.transcriber_thread = ASRTranscriber(self.segment_queue, translator, logger, initial_mode="EN->AR", model_size=model_size)
+
+    def start(self):
+        """Start the audio capture and transcription threads."""
+        # Start the transcription thread (which will load the model and then wait for segments)
+        self.transcriber_thread.start()
+        # Start the audio capture thread to begin feeding audio segments
+        self.capture_thread.start()
+
+    def stop(self):
+        """Stop the audio capture and transcription threads."""
+        # Signal the audio capture thread to stop and wait for it
+        self.stop_event.set()
+        self.capture_thread.join(timeout=5.0)
+        # Send a sentinel None to the segment queue to ensure the transcriber thread can exit if waiting
+        try:
+            self.segment_queue.put_nowait(None)
+        except queue.Full:
+            # If queue is full, try to clear an item and put again
+            try:
+                self.segment_queue.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.segment_queue.put_nowait(None)
+            except Exception:
+                pass
+        # Request the transcriber thread to stop
+        self.transcriber_thread.requestInterruption()
+        # Wait for the transcriber thread to finish
+        self.transcriber_thread.wait(5000)  # wait up to 5 seconds for clean exit
+
+    def set_mode(self, mode: str):
+        """
+        Set the translation direction mode.
+        :param mode: "EN->AR" for English-to-Arabic or "AR->EN" for Arabic-to-English.
+        """
+        if mode not in ("EN->AR", "AR->EN"):
+            raise ValueError("Mode must be 'EN->AR' or 'AR->EN'.")
+        self.transcriber_thread.mode = mode
+        # (The audio capture is language-agnostic; we rely on the transcriber to handle language setting.)
+
+       
