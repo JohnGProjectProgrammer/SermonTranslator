@@ -10,27 +10,19 @@ class Translator:
     Initializes the required translation models and provides translation methods.
     """
     def __init__(self):
-        # Ensure that English and Arabic translation packages are installed.
-        # We'll attempt to find English and Arabic languages in the installed list.
         installed_languages = argostranslate.translate.get_installed_languages()
-        # Filter for English and Arabic languages by their language codes
         self._english_lang = next((lang for lang in installed_languages if lang.code == "en"), None)
         self._arabic_lang = next((lang for lang in installed_languages if lang.code == "ar"), None)
         if not self._english_lang or not self._arabic_lang:
-            # If required languages are not installed, attempt to download and install them.
-            # Note: This requires internet access on first run to fetch the models.
             argostranslate.package.update_package_index()
             available_packages = argostranslate.package.get_available_packages()
-            # Find English->Arabic and Arabic->English packages
             for pkg in available_packages:
                 if (pkg.from_code == "en" and pkg.to_code == "ar") or (pkg.from_code == "ar" and pkg.to_code == "en"):
                     download_path = pkg.download()
                     argostranslate.package.install_from_path(download_path)
-            # Update language references after installation
             installed_languages = argostranslate.translate.get_installed_languages()
             self._english_lang = next((lang for lang in installed_languages if lang.code == "en"), None)
             self._arabic_lang = next((lang for lang in installed_languages if lang.code == "ar"), None)
-        # Ensure both languages are now available
         if not self._english_lang or not self._arabic_lang:
             raise RuntimeError("Required translation languages (English and Arabic) are not available.")
         # Get translation objects for English->Arabic and Arabic->English

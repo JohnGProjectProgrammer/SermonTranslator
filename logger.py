@@ -24,7 +24,6 @@ class Logger:
             self.file = open(self.file_path, mode="w", encoding="utf-8")
         except Exception as e:
             raise RuntimeError(f"Failed to open log file {self.file_path}: {e}")
-        # Write a header line to the log file (optional)
         start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.file.write(f"Log started at {start_time}\n")
         self.file.flush()
@@ -41,7 +40,6 @@ class Logger:
             self.file.write(f"[{timestamp}] {text}\n")
             self.file.flush()
         except Exception as e:
-            # In production, we might handle or print an error message.
             print(f"Logging error: {e}")
 
     def close(self):

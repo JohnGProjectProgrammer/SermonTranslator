@@ -18,30 +18,23 @@ class TranslatorGUI(QMainWindow):
         """
         super().__init__()
         self.asr_manager = asr_manager
-        # Set up window
         self.setWindowTitle("Real-Time Sermon Translator")
-        # Create central widget and layout
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
-        # Create label to display translated text
         self.label = QLabel("...", self)
-        # Configure label appearance for large text display
-        font = QFont("Arial", 32, QFont.Bold)  # large, bold text
+        font = QFont("Arial", 32, QFont.Bold)  
         self.label.setFont(font)
-        self.label.setAlignment(Qt.AlignCenter)  # initially center text
-        self.label.setWordWrap(True)  # allow multiline text if needed
-        layout.addWidget(self.label, 1)  # give label vertical stretch factor 1 (to use available space)
-        # Create toggle button for translation direction
+        self.label.setAlignment(Qt.AlignCenter) 
+        self.label.setWordWrap(True)  
+        layout.addWidget(self.label, 1)  
         self.toggle_button = QPushButton(self)
         # Initial mode is English->Arabic
         self.current_mode = "EN->AR"
         self.toggle_button.setText("Switch to AR->EN")
-        # Connect button signal to toggle handler
         self.toggle_button.clicked.connect(self.toggle_translation_direction)
         layout.addWidget(self.toggle_button, 0, alignment=Qt.AlignCenter)
         # Optionally, set the window to full-screen mode by default.
-        # (This can also be done in main.py after initializing the GUI).
         # self.showFullScreen()
 
     def toggle_translation_direction(self):
@@ -50,13 +43,10 @@ class TranslatorGUI(QMainWindow):
         Updates the button text and informs the ASR manager of the change.
         """
         if self.current_mode == "EN->AR":
-            # Switch to Arabic -> English mode
             self.current_mode = "AR->EN"
             self.toggle_button.setText("Switch to EN->AR")
-            # Inform ASR manager to switch mode
             self.asr_manager.set_mode("AR->EN")
         else:
-            # Switch to English -> Arabic mode
             self.current_mode = "EN->AR"
             self.toggle_button.setText("Switch to AR->EN")
             self.asr_manager.set_mode("EN->AR")
@@ -66,15 +56,10 @@ class TranslatorGUI(QMainWindow):
         Display the given translated text on the label in the GUI.
         This method is intended to be connected to the ASR transcriber's signal.
         """
-        # If the output text is Arabic, you might adjust alignment or direction for better readability.
-        # Here we simply update the text in the label.
         self.label.setText(text)
-        # Optionally, adjust alignment based on language direction for readability.
         if self.current_mode == "EN->AR":
-            # Arabic text (target) is right-to-left, align to right and top for readability
             self.label.setAlignment(Qt.AlignRight | Qt.AlignTop)
         else:
-            # English text (target) is left-to-right, align to left and top
             self.label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
 
     def keyPressEvent(self, event):
@@ -85,5 +70,4 @@ class TranslatorGUI(QMainWindow):
         if event.key() == Qt.Key_Escape:
             self.close()
         else:
-            # Pass other keys to base class (for default handling)
             super().keyPressEvent(event)
